@@ -29,6 +29,19 @@ class BookmarkManager:
     def get_bookmarks(self):
         return self.bookmarks
 
+class DownloadManager:
+        def __init__(self):
+            self.downloads = []
+
+        def add_download(self, download):
+            self.downloads.append(download)
+
+        def remove_download(self, download):
+            self.downloads.remove(download)
+
+        def get_downloads(self):
+            return self.downloads
+
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__()
@@ -85,11 +98,21 @@ class MainWindow(QMainWindow):
         navigation_bar.addSeparator()
         navigation_bar.addAction(bookmark_button)
         
+        history_button = QAction(QIcon('icons/icons/history.png'), 'Lịch sử', self)
+        history_button.triggered.connect(self.show_history)
+        navigation_bar.addAction(history_button)
+        
+        downloads_button = QAction(QIcon('icons/icons/download.png'), 'Quản lý Tải về', self)
+        downloads_button.triggered.connect(self.show_downloads)
+        navigation_bar.addAction(downloads_button)
+        
+        incognito_button = QAction(QIcon('icons/icons/incognito.png'), 'New Incognito Tab', self)
+        incognito_button.triggered.connect(self.add_incognito_tab)
+        navigation_bar.addAction(incognito_button)
+
         self.bookmarks_list_widget = QListWidget()
         self.bookmark_manager = BookmarkManager()
 
-    def bookmarks_list(self):
-        pass
 
     def renew_urlbar(self, t, browser=None):
         if browser != self.tabs.currentWidget():
@@ -130,6 +153,7 @@ class MainWindow(QMainWindow):
             self.tabs.removeTab(i)
         else:
             self.close()
+
     def bookmarks_list(self):
         bookmarks = self.bookmark_manager.get_bookmarks()
         self.bookmarks_list_widget.clear()
@@ -163,6 +187,44 @@ class MainWindow(QMainWindow):
             return
         self.bookmark_manager.edit_bookmark(bookmark, title[0], title[1])
         self.bookmarks_list()
+        
+    def show_history(self):
+        history_dialog = QDialog(self)
+        history_dialog.setWindowTitle('Lịch sử Web')
+
+        history_list_widget = QListWidget(history_dialog)
+        for entry in self.tabs.currentWidget().history:
+            item = QListWidgetItem(f"{entry['title']} - {entry['url']}")
+            history_list_widget.addItem(item)
+
+        layout = QVBoxLayout()
+        layout.addWidget(history_list_widget)
+        history_dialog.setLayout(layout)
+
+        history_dialog.exec_() 
+        
+    def show_downloads(self):  # Thêm phương thức show_downloads vào lớp MainWindow
+        downloads_dialog = QDialog(self)
+        downloads_dialog.setWindowTitle('Quản lý Tải về')
+
+        downloads_list_widget = QListWidget(downloads_dialog)
+        for download in self.tabs.currentWidget().download_manager.get_downloads():
+            item = QListWidgetItem(download.url().toString())
+            downloads_list_widget.addItem(item)
+
+        layout = QVBoxLayout()
+        layout.addWidget(downloads_list_widget)
+        downloads_dialog.setLayout(layout)
+
+        downloads_dialog.exec_()
+        
+    def add_incognito_tab(self):
+        # Tạo một webview mới cho chế độ ẩn danh với một profile riêng biệt
+        incognito_profile = QWebEngineProfile('incognito', self)
+        incognito_webview = WebEngineView(self, profile=incognito_profile)
+        incognito_webview.settings().setAttribute(QWebEngineSettings.PrivateBrowsingEnabled, True)   
+         
+   
 # each tab contains a webview
 class WebEngineView(QWebEngineView):
     def __init__(self, mainwindow, parent=None):
@@ -171,7 +233,15 @@ class WebEngineView(QWebEngineView):
         self.page().windowCloseRequested.connect(self.on_windowCloseRequested)
         self.page().profile().downloadRequested.connect(self.on_downloadRequested)
         self.mainwindow = mainwindow
+        
+        # Thêm lịch sử web
+        self.history = []
+        self.page().urlChanged.connect(self.update_history)
 
+        self.download_manager = DownloadManager()
+        # Kết nối sự kiện khi download được yêu cầu
+        self.page().profile().downloadRequested.connect(self.on_downloadRequested)
+        
     def on_windowCloseRequested(self):
         the_index = self.mainwindow.tabs.currentIndex()
         self.mainwindow.tabs.removeTab(the_index)
@@ -182,29 +252,53 @@ class WebEngineView(QWebEngineView):
             the_filename = downloadItem.url().fileName()
             if len(the_filename) == 0 or "." not in the_filename:
                 cur_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-                the_filename = "下载文件" + cur_time + ".xls"
-            the_sourceFile = os.path.join(os.getcwd(), the_filename)
+                the_filename = "download" + cur_time + ".xls"
+            the_sourceFile = os.path.join(os.getcwd(),'Downloads ', the_filename)
 
     
             # downloadItem.setSavePageFormat(QWebEngineDownloadItem.CompleteHtmlSaveFormat)
             downloadItem.setPath(the_sourceFile)
             downloadItem.accept()
             downloadItem.finished.connect(self.on_downloadfinished)
+            
+            self.download_manager.add_download(downloadItem)
+            downloadItem.finished.connect(self.on_downloadfinished)
 
     def on_downloadfinished(self):
         js_string = '''
-                alert("Đã lưu trang thành công");
+                alert("Đã lưu ảnh thành công");
                 '''
         self.page().runJavaScript(js_string)
+        
+    def show_downloads(self):
+        downloads_dialog = QDialog(self)
+        downloads_dialog.setWindowTitle('Quản lý Tải về')
 
-        # 重写createwindow()
+        downloads_list_widget = QListWidget(downloads_dialog)
+        for download in self.download_manager.get_downloads():
+            item = QListWidgetItem(download.url().toString())
+            downloads_list_widget.addItem(item)
+
+        layout = QVBoxLayout()
+        layout.addWidget(downloads_list_widget)
+        downloads_dialog.setLayout(layout)
+
+        downloads_dialog.exec_()
+
+
     def createWindow(self, QWebEnginePage_WebWindowType):
         new_webview = WebEngineView(self.mainwindow)
         self.mainwindow.create_new_tab(new_webview)
         return new_webview
-
+    
+    def update_history(self):
+        current_url = self.url().toString()
+        current_title = self.page().title()
+        self.history.append({'url': current_url, 'title': current_title})
+    
 if __name__=='__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
+    
