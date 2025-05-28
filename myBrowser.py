@@ -79,16 +79,20 @@ class MainWindow(QMainWindow):
         next_button = QAction(QIcon('icons/icons/next.png'), 'Forward', self)
         stop_button = QAction(QIcon('icons/icons/cross.png'), 'Stop', self)
         fresh_button = QAction(QIcon('icons/icons/renew.png'), 'reload', self)
+        translate_button = QAction(QIcon('icons/icons/translate.png'), 'Dịch trang', self)
+
 
         back_button.triggered.connect(self.tabs.currentWidget().back)
         next_button.triggered.connect(self.tabs.currentWidget().forward)
         stop_button.triggered.connect(self.tabs.currentWidget().stop)
         fresh_button.triggered.connect(self.tabs.currentWidget().reload)
- 
+        translate_button.triggered.connect(self.translate_page)
+
         navigation_bar.addAction(back_button)
         navigation_bar.addAction(next_button)
         navigation_bar.addAction(stop_button)
         navigation_bar.addAction(fresh_button)
+        navigation_bar.addAction(translate_button)
 
         navigation_bar.addSeparator()
         navigation_bar.addWidget(self.urlbar)
@@ -138,7 +142,7 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(i)
         browser.urlChanged.connect(lambda qurl, browser=browser: self.renew_urlbar(qurl, browser))
         browser.loadFinished.connect(lambda _, i=i, browser=browser:
-                                     self.tabs.setTabText(i, browser.page().title()[:20]))
+        self.tabs.setTabText(i, browser.page().title()[:20]))
 
     def tab_open_doubleclick(self, i):
         if i == -1:
@@ -224,6 +228,27 @@ class MainWindow(QMainWindow):
         incognito_webview = WebEngineView(self, profile=incognito_profile)
         incognito_webview.settings().setAttribute(QWebEngineSettings.PrivateBrowsingEnabled, True)   
          
+    def translate_page(self):
+        # Inject Google Translate script vào trang hiện tại
+        js_code = """
+        if (!window.__googleTranslateInjected) {
+            var gt = document.createElement('script');
+            gt.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+            document.body.appendChild(gt);
+            window.googleTranslateElementInit = function() {
+                new window.google.translate.TranslateElement({pageLanguage: 'auto', includedLanguages: 'vi,en', layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
+            };
+            var div = document.createElement('div');
+            div.id = 'google_translate_element';
+            div.style.position = 'fixed';
+            div.style.top = '10px';
+            div.style.right = '10px';
+            div.style.zIndex = 9999;
+            document.body.appendChild(div);
+            window.__googleTranslateInjected = true;
+        }
+        """
+        self.tabs.currentWidget().page().runJavaScript(js_code)
    
 # each tab contains a webview
 class WebEngineView(QWebEngineView):
@@ -253,7 +278,7 @@ class WebEngineView(QWebEngineView):
             if len(the_filename) == 0 or "." not in the_filename:
                 cur_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
                 the_filename = "download" + cur_time + ".xls"
-            the_sourceFile = os.path.join(os.getcwd(),'Downloads ', the_filename)
+            the_sourceFile = os.path.join(os.getcwd(), 'Downloads', the_filename)
 
     
             # downloadItem.setSavePageFormat(QWebEngineDownloadItem.CompleteHtmlSaveFormat)
@@ -262,7 +287,7 @@ class WebEngineView(QWebEngineView):
             downloadItem.finished.connect(self.on_downloadfinished)
             
             self.download_manager.add_download(downloadItem)
-            downloadItem.finished.connect(self.on_downloadfinished)
+            # downloadItem.finished.connect(self.on_downloadfinished)
 
     def on_downloadfinished(self):
         js_string = '''
